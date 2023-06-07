@@ -1,29 +1,36 @@
+from bokeh.io import output_file, show
+from bokeh.models import GeoJSONDataSource, HoverTool
+from bokeh.plotting import figure
+from bokeh.palettes import Viridis6 as palette
+from bokeh.models import CategoricalColorMapper
 import geopandas as gpd
-import folium
-from folium.plugins import MarkerCluster
+import json
 
-# Load the shapefile
-gdf = gpd.read_file('Data/Black_Marble_IDs/Black_Marble_World_tiles.shp')
+# Read the shapefile
+shapefile = gpd.read_file('Data/Black_Marble_IDs/Black_Marble_World_tiles.shp')
 
-# Reproject to a projected CRS (example uses EPSG:3857, Web Mercator)
-gdf = gdf.to_crs('EPSG:3857')
+# Convert to GeoJSON
+json_data = json.loads(shapefile.to_json())
 
-# Create a folium map
-m = folium.Map([gdf['geometry'].centroid.y.mean(),
-                gdf['geometry'].centroid.x.mean()],
-                zoom_start=10)
+# Create a DataSource from the GeoJSON
+source = GeoJSONDataSource(geojson=json.dumps(json_data))
 
-# Function to add a clickable marker for each shape
-def add_marker(row):
-    marker = folium.Marker(location=[row['geometry'].centroid.y,
-                                     row['geometry'].centroid.x])
-    # Convert the attributes to a string instead of trying to use to_json
-    popup = folium.Popup(f"{row}", max_width=500)
-    marker.add_child(popup)
-    marker.add_to(m)
+# Define a color mapper
+color_mapper = CategoricalColorMapper(factors=shapefile['TileID'].unique(),
+                                      palette=palette)
 
-# Apply function
-gdf.apply(add_marker, axis=1)
+# Create a figure
+p = figure(background_fill_color="lightgray")
 
-# Display map
-m
+# Add the polygons from the GeoJSONDataSource
+p.patches('xs', 'ys', source=source,
+          fill_color={'field': 'TileID', 'transform': color_mapper},
+          fill_alpha=0.7, line_color="white", line_width=0.5)
+
+# Add a hover tool
+hover = HoverTool(tooltips=[("TileID", "@TileID")])
+p.add_tools(hover)
+
+# Display the figure
+output_file("shapefile.html")
+show(p)
