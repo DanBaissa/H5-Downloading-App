@@ -1,36 +1,50 @@
-from bokeh.io import output_file, show
-from bokeh.models import GeoJSONDataSource, HoverTool
-from bokeh.plotting import figure
-from bokeh.palettes import Viridis6 as palette
-from bokeh.models import CategoricalColorMapper
+import tkinter as tk
+from tkinter import ttk
+from tkinter import scrolledtext
 import geopandas as gpd
-import json
 
-# Read the shapefile
+# Load the shapefile
 shapefile = gpd.read_file('Data/Black_Marble_IDs/Black_Marble_World_tiles.shp')
 
-# Convert to GeoJSON
-json_data = json.loads(shapefile.to_json())
 
-# Create a DataSource from the GeoJSON
-source = GeoJSONDataSource(geojson=json.dumps(json_data))
+def select_country():
+    # Clear the output text box
+    output.delete(1.0, tk.END)
 
-# Define a color mapper
-color_mapper = CategoricalColorMapper(factors=shapefile['TileID'].unique(),
-                                      palette=palette)
+    # Get the country selected by the user and remove any leading or trailing whitespaces
+    selected_country = country_var.get().strip()
 
-# Create a figure
-p = figure(background_fill_color="lightgray")
+    # Filter the shapefile to get the rows for the selected country
+    selected_rows = shapefile[shapefile['COUNTRY'] == selected_country]
 
-# Add the polygons from the GeoJSONDataSource
-p.patches('xs', 'ys', source=source,
-          fill_color={'field': 'TileID', 'transform': color_mapper},
-          fill_alpha=0.7, line_color="white", line_width=0.5)
+    # Get the TileID values for the selected country and convert them to a list
+    tile_ids = selected_rows['TileID'].tolist()
 
-# Add a hover tool
-hover = HoverTool(tooltips=[("TileID", "@TileID")])
-p.add_tools(hover)
+    # Save the 'TileID' values to a .txt file (This will overwrite any existing file)
+    selected_rows['TileID'].to_csv(selected_country + '_TileIDs.txt', index=False, header=False)
 
-# Display the figure
-output_file("shapefile.html")
-show(p)
+    # Print TileID values to the output text box
+    for tile_id in tile_ids:
+        output.insert(tk.END, str(tile_id) + '\n')
+
+
+# Create a new tkinter window
+root = tk.Tk()
+
+# Add a dropdown menu (combobox) with all unique values of the 'COUNTRY' column
+country_var = tk.StringVar()
+country_dropdown = ttk.Combobox(root, textvariable=country_var)
+# remove quotation marks from country names and convert the numpy array to a list
+country_dropdown['values'] = [str(i) for i in shapefile['COUNTRY'].unique().tolist()]
+country_dropdown.pack()
+
+# Add a submit button that will execute the select_country function when clicked
+submit_button = ttk.Button(root, text='Submit', command=select_country)
+submit_button.pack()
+
+# Add an output text box
+output = scrolledtext.ScrolledText(root, width=40, height=10)
+output.pack()
+
+# Start the tkinter event loop
+root.mainloop()
