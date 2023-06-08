@@ -18,7 +18,7 @@ class URLSearcher(Tk):
     def __init__(self):
         super().__init__()
 
-        self.title("URL Search")
+        self.title("Black Marble Night Lights Downloader")
 
         self.start_date = StringVar()
         self.end_date = StringVar()
@@ -44,9 +44,12 @@ class URLSearcher(Tk):
         Label(self, text='Token:').grid(row=4, column=0)
         Entry(self, textvariable=self.token).grid(row=4, column=1)
 
-        Button(self, text="Submit", command=self.search).grid(row=5, column=0, columnspan=2)
+        self.progress = ttk.Progressbar(self, orient='horizontal', mode='determinate')
+        self.progress.grid(row=5, column=0, columnspan=3)
 
-    def search(self):
+        Button(self, text="Download", command=self.download).grid(row=6, column=0, columnspan=2)
+
+    def download(self):
         start_date = self.start_date.get()
         end_date = self.end_date.get()
         selected_country = self.country_var.get().strip()
@@ -55,11 +58,33 @@ class URLSearcher(Tk):
 
         urls = self.search_urls_by_date_range_and_tiles(start_date, end_date, tiles)
 
-        messagebox.showinfo("Results", "URLs are ready for download.")
-        self.destroy()
+        messagebox.showinfo("", "Download Started.")
 
-        app = Downloader(urls, self.token.get(), self.destination_folder.get())
-        app.mainloop()
+        self.progress['maximum'] = len(urls)
+        self.progress['value'] = 0
+
+        CTX = ssl.SSLContext()
+        headers = {'user-agent': USERAGENT, 'Authorization': 'Bearer ' + self.token.get()}
+
+        # Start the file download in a separate thread
+        threading.Thread(target=self.start_download_thread, args=(urls, headers, CTX)).start()
+
+    def start_download_thread(self, urls, headers, ctx):
+        for url in urls:
+            url = url.strip()
+            filename = url.split('/')[-1]
+            dest = os.path.join(self.destination_folder.get(), filename)
+
+            try:
+                with urlopen(Request(url, headers=headers), context=ctx) as response:
+                    with open(dest, 'wb') as out_file:
+                        shutil.copyfileobj(response, out_file)
+                self.progress['value'] += 1
+            except Exception as e:
+                messagebox.showerror('Download error', f'Failed to download {url} due to {str(e)}')
+                break
+
+        messagebox.showinfo('Download complete', 'Download of all files completed.')
 
     def date_to_julian(self, date_string):
         date = datetime.strptime(date_string, "%B %d, %Y")
@@ -97,47 +122,6 @@ class URLSearcher(Tk):
 
     def browse_destination_folder(self):
         self.destination_folder.set(filedialog.askdirectory())
-
-class Downloader(Tk):
-    def __init__(self, urls, token, destination_folder):
-        super().__init__()
-
-        self.urls = urls
-        self.title("H5 Downloader")
-
-        self.destination_folder = destination_folder
-        self.token = token
-
-        self.progress = ttk.Progressbar(self, orient='horizontal', mode='determinate')
-        self.progress.grid(row=0, column=0, columnspan=3)
-
-        Button(self, text='Download', command=self.start_download_thread).grid(row=1, column=0, columnspan=3)
-
-    def start_download_thread(self):
-        threading.Thread(target=self.download_files).start()
-
-    def download_files(self):
-        self.progress['maximum'] = len(self.urls)
-        self.progress['value'] = 0
-
-        CTX = ssl.SSLContext()
-        headers = { 'user-agent' : USERAGENT, 'Authorization' : 'Bearer ' + self.token }
-
-        for url in self.urls:
-            url = url.strip()
-            filename = url.split('/')[-1]
-            dest = os.path.join(self.destination_folder, filename)
-
-            try:
-                with urlopen(Request(url, headers=headers), context=CTX) as response:
-                    with open(dest, 'wb') as out_file:
-                        shutil.copyfileobj(response, out_file)
-                self.progress['value'] += 1
-            except Exception as e:
-                messagebox.showerror('Download error', f'Failed to download {url} due to {str(e)}')
-                break
-
-        messagebox.showinfo('Download complete', 'Download of all files completed.')
 
 if __name__ == "__main__":
     app = URLSearcher()
