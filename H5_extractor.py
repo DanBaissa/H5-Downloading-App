@@ -90,17 +90,36 @@ def select_folder_and_save_files():
         "height": mosaic.shape[1],
         "width": mosaic.shape[2],
         "transform": out_trans,
+        "crs": src.crs
     })
 
-    mosaic_cropped, _ = mask(mosaic, [country_geojson], crop=True)
+    # Save the mosaic to a temporary GeoTIFF file
+    with rasterio.open(f"temp_{selected_country}.tif", 'w', **out_meta) as dest:
+        dest.write(mosaic)
 
-    with rasterio.open(f"{selected_country}_merged_cropped.tif", "w", **out_meta) as dest:
+    # Open the temporary file with rasterio
+    with rasterio.open(f"temp_{selected_country}.tif") as src:
+        # Crop the mosaic using the country's geometry
+        mosaic_cropped, _ = mask(src, [country_geojson], crop=True)
+        out_meta = src.meta.copy()
+
+    # Update the metadata
+    out_meta.update({
+        "height": mosaic_cropped.shape[1],
+        "width": mosaic_cropped.shape[2],
+        "transform": out_trans
+    })
+
+    # Save the cropped mosaic to a new GeoTIFF file
+    with rasterio.open(f"{selected_country}_merged_cropped.tif", 'w', **out_meta) as dest:
         dest.write(mosaic_cropped)
 
     # Close the raster files and delete the temporary files
     for raster in rasters:
         raster.close()
         os.remove(raster.name)
+
+    os.remove(f"temp_{selected_country}.tif")
 
     output.insert(tk.END, "Finished processing\n")
 
