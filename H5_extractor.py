@@ -2,6 +2,7 @@ import os
 import re
 import h5py
 import rasterio
+from rasterio.merge import merge
 import geopandas as gpd
 import numpy as np
 import tkinter as tk
@@ -12,6 +13,7 @@ from rasterio.transform import from_bounds
 
 # Load the shapefile
 shapefile = gpd.read_file('Data/Black_Marble_IDs/Black_Marble_World_tiles.shp')
+
 
 def select_folder_and_save_files():
     # Clear the output text box
@@ -28,6 +30,9 @@ def select_folder_and_save_files():
 
     # Get a list of all .h5 files in the selected directory
     files = [f for f in os.listdir(folder_selected) if f.endswith('.h5')]
+
+    # List to store the raster data
+    rasters = []
 
     # Loop through the files and process them if their TileID is in selected_rows
     for file in files:
@@ -46,20 +51,47 @@ def select_folder_and_save_files():
                 # Get the bounds of the shape
                 left, bottom, right, top = shape.total_bounds
 
-                # Write the raster data as a GeoTIFF
+                # Save the raster data to a temporary GeoTIFF file
+                temp_file = os.path.join(folder_selected, f"temp_{tile_id}.tif")
                 with rasterio.open(
-                    f"output_{tile_id}.tif",
-                    "w",
-                    driver="GTiff",
-                    height=gap_filled_dnb_brdf_corrected_ntl.shape[0],
-                    width=gap_filled_dnb_brdf_corrected_ntl.shape[1],
-                    count=1,
-                    dtype=gap_filled_dnb_brdf_corrected_ntl.dtype,
-                    crs=shape.crs.to_epsg(),  # Use the CRS of the shapefile
-                    transform=from_bounds(left, bottom, right, top, gap_filled_dnb_brdf_corrected_ntl.shape[1], gap_filled_dnb_brdf_corrected_ntl.shape[0]),  # Generate the transform from the shape bounds
+                        temp_file,
+                        "w",
+                        driver="GTiff",
+                        height=gap_filled_dnb_brdf_corrected_ntl.shape[0],
+                        width=gap_filled_dnb_brdf_corrected_ntl.shape[1],
+                        count=1,
+                        dtype=gap_filled_dnb_brdf_corrected_ntl.dtype,
+                        crs=shape.crs.to_epsg(),  # Use the CRS of the shapefile
+                        transform=from_bounds(left, bottom, right, top, gap_filled_dnb_brdf_corrected_ntl.shape[1],
+                                              gap_filled_dnb_brdf_corrected_ntl.shape[0]),
+                        # Generate the transform from the shape bounds
                 ) as dest:
                     dest.write(gap_filled_dnb_brdf_corrected_ntl, 1)
-            output.insert(tk.END, f"Finished processing {file}\n")
+
+                # Open the temporary file with rasterio and add to the list
+                src = rasterio.open(temp_file)
+                rasters.append(src)
+
+    # Merge all the rasters and write the result to a new GeoTIFF file
+    mosaic, out_trans = merge(rasters)
+    out_meta = src.meta.copy()
+    out_meta.update({
+        "driver": "GTiff",
+        "height": mosaic.shape[1],
+        "width": mosaic.shape[2],
+        "transform": out_trans,
+    })
+
+    with rasterio.open(f"{selected_country}_merged.tif", "w", **out_meta) as dest:
+        dest.write(mosaic)
+
+    # Close the raster files and delete the temporary files
+    for raster in rasters:
+        raster.close()
+        os.remove(raster.name)
+
+    output.insert(tk.END, "Finished processing\n")
+
 
 # Create a new tkinter window
 root = tk.Tk()
